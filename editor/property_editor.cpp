@@ -2903,7 +2903,7 @@ void PropertyEditor::update_tree() {
 				} else {
 					if (p.type == Variant::REAL) {
 
-						item->set_range_config(1, -16777216, 16777216, 0.001);
+						item->set_range_config(1, -1e99, 1e99, 0.001);
 					} else {
 
 						item->set_range_config(1, -2147483647, 2147483647, 1);
