@@ -120,6 +120,9 @@ SceneStringNames::SceneStringNames() {
 
 	_input_event = StaticCString::create("_input_event");
 
+	_unhandled_input=StaticCString::create("_unhandled_input");
+	_unhandled_key_input=StaticCString::create("_unhandled_key_input");
+
 	changed = StaticCString::create("changed");
 	_shader_changed = StaticCString::create("_shader_changed");
 

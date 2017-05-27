@@ -100,6 +100,26 @@ void Node::_notification(int p_notification) {
 
 			if (get_script_instance()) {
 
+				if (get_script_instance()->has_method(SceneStringNames::get_singleton()->_input)) {
+					set_process_input(true);
+				}
+
+				if (get_script_instance()->has_method(SceneStringNames::get_singleton()->_unhandled_input)) {
+					set_process_unhandled_input(true);
+				}
+
+				if (get_script_instance()->has_method(SceneStringNames::get_singleton()->_unhandled_key_input)) {
+					set_process_unhandled_key_input(true);
+				}
+
+				if (get_script_instance()->has_method(SceneStringNames::get_singleton()->_process)) {
+					set_process(true);
+				}
+
+				if (get_script_instance()->has_method(SceneStringNames::get_singleton()->_fixed_process)) {
+					set_fixed_process(true);
+				}
+
 				Variant::CallError err;
 				get_script_instance()->call_multilevel_reversed(SceneStringNames::get_singleton()->_ready, NULL, 0);
 			}
@@ -144,7 +164,10 @@ void Node::_propagate_ready() {
 		data.children[i]->_propagate_ready();
 	}
 	data.blocked--;
-	notification(NOTIFICATION_READY);
+	if (data.ready_first) {
+		notification(NOTIFICATION_READY);
+		data.ready_first=false;
+	}
 }
 
 void Node::_propagate_enter_tree() {
@@ -258,6 +281,7 @@ void Node::_propagate_exit_tree() {
 		data.tree->tree_changed();
 
 	data.inside_tree = false;
+	data.ready_notified=false;
 	data.tree = NULL;
 	data.depth = -1;
 }
@@ -350,6 +374,32 @@ void Node::set_fixed_process(bool p_process) {
 	_change_notify("fixed_process");
 }
 
+bool Node::is_fixed_processing() const {
+
+	return data.fixed_process;
+}
+
+void Node::set_fixed_process_internal(bool p_process_internal) {
+
+	if (data.fixed_process_internal==p_process_internal)
+		return;
+
+	data.fixed_process_internal=p_process_internal;
+
+	if (data.fixed_process_internal)
+		add_to_group("fixed_process_internal",false);
+	else
+		remove_from_group("fixed_process_internal");
+
+	data.fixed_process_internal=p_process_internal;
+	_change_notify("fixed_process_internal");
+}
+
+bool Node::is_fixed_processing_internal() const {
+
+	return data.fixed_process_internal;
+}
+
 void Node::set_pause_mode(PauseMode p_mode) {
 
 	if (data.pause_mode == p_mode)
@@ -425,6 +475,15 @@ float Node::get_fixed_process_delta_time() const {
 		return 0;
 }
 
+
+float Node::get_process_delta_time() const {
+
+	if (data.tree)
+		return data.tree->get_idle_process_time();
+	else
+		return 0;
+}
+
 void Node::set_process(bool p_idle_process) {
 
 	if (data.idle_process == p_idle_process)
@@ -441,22 +500,30 @@ void Node::set_process(bool p_idle_process) {
 	_change_notify("idle_process");
 }
 
-float Node::get_process_delta_time() const {
-
-	if (data.tree)
-		return data.tree->get_idle_process_time();
-	else
-		return 0;
-}
-
-bool Node::is_fixed_processing() const {
-
-	return data.fixed_process;
-}
-
 bool Node::is_processing() const {
 
 	return data.idle_process;
+}
+
+void Node::set_process_internal(bool p_idle_process_internal) {
+
+	if (data.idle_process_internal==p_idle_process_internal)
+		return;
+
+	data.idle_process_internal=p_idle_process_internal;
+
+	if (data.idle_process_internal)
+		add_to_group("idle_process_internal",false);
+	else
+		remove_from_group("idle_process_internal");
+
+	data.idle_process_internal=p_idle_process_internal;
+	_change_notify("idle_process_internal");
+}
+
+bool Node::is_processing_internal() const {
+
+	return data.idle_process_internal;
 }
 
 void Node::set_process_input(bool p_enable) {
@@ -2052,6 +2119,10 @@ bool Node::is_displayed_folded() const {
 	return data.display_folded;
 }
 
+void Node::request_ready() {
+	data.ready_first=true;
+}
+
 void Node::_bind_methods() {
 
 	ObjectTypeDB::bind_method(_MD("_add_child_below_node", "node:Node", "child_node:Node", "legible_unique_name"), &Node::add_child_below_node, DEFVAL(false));
@@ -2110,6 +2181,12 @@ void Node::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("set_display_folded", "fold"), &Node::set_display_folded);
 	ObjectTypeDB::bind_method(_MD("is_displayed_folded"), &Node::is_displayed_folded);
 
+	ObjectTypeDB::bind_method(_MD("set_process_internal","enable"),&Node::set_process_internal);
+	ObjectTypeDB::bind_method(_MD("is_processing_internal"),&Node::is_processing_internal);
+
+	ObjectTypeDB::bind_method(_MD("set_fixed_process_internal","enable"),&Node::set_fixed_process_internal);
+	ObjectTypeDB::bind_method(_MD("is_fixed_processing_internal"),&Node::is_fixed_processing_internal);
+
 	ObjectTypeDB::bind_method(_MD("get_tree:SceneTree"), &Node::get_tree);
 
 	ObjectTypeDB::bind_method(_MD("duplicate:Node", "use_instancing", "flags"), &Node::duplicate, DEFVAL(false), DEFVAL(DUPLICATE_SIGNALS | DUPLICATE_GROUPS | DUPLICATE_SCRIPTS));
@@ -2121,6 +2198,8 @@ void Node::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("get_viewport"), &Node::get_viewport);
 
 	ObjectTypeDB::bind_method(_MD("queue_free"), &Node::queue_delete);
+
+	ObjectTypeDB::bind_method(_MD("request_ready"),&Node::request_ready);
 
 #ifdef TOOLS_ENABLED
 	ObjectTypeDB::bind_method(_MD("_set_import_path", "import_path"), &Node::set_import_path);
@@ -2143,6 +2222,8 @@ void Node::_bind_methods() {
 	BIND_CONSTANT(NOTIFICATION_INSTANCED);
 	BIND_CONSTANT(NOTIFICATION_DRAG_BEGIN);
 	BIND_CONSTANT(NOTIFICATION_DRAG_END);
+	BIND_CONSTANT(NOTIFICATION_INTERNAL_PROCESS);
+	BIND_CONSTANT(NOTIFICATION_INTERNAL_FIXED_PROCESS);
 
 	BIND_CONSTANT(PAUSE_MODE_INHERIT);
 	BIND_CONSTANT(PAUSE_MODE_STOP);
@@ -2185,6 +2266,8 @@ Node::Node() {
 	data.tree = NULL;
 	data.fixed_process = false;
 	data.idle_process = false;
+	data.fixed_process_internal=false;
+	data.idle_process_internal=false;
 	data.inside_tree = false;
 	data.ready_notified = false;
 
@@ -2200,6 +2283,7 @@ Node::Node() {
 	data.viewport = NULL;
 	data.use_placeholder = false;
 	data.display_folded = false;
+	data.ready_first=true;
 }
 
 Node::~Node() {
